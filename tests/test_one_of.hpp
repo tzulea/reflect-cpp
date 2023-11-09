@@ -6,11 +6,13 @@
 
 #include "write_and_read.hpp"
 
-void test_all_of() {
-  std::cout << "test_all_of" << std::endl;
+void test_one_of() {
+  std::cout << "test_one_of" << std::endl;
 
-  using Age = rfl::Validator<unsigned int,
-                             rfl::AllOf<rfl::Minimum<0>, rfl::Maximum<130>>>;
+  using Age = rfl::Validator<
+      unsigned int,
+      rfl::OneOf<rfl::AllOf<rfl::Minimum<0>, rfl::Maximum<10>>,
+                 rfl::AllOf<rfl::Minimum<40>, rfl::Maximum<130>>>>;
 
   struct Person {
     rfl::Field<"firstName", std::string> first_name;

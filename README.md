@@ -11,7 +11,7 @@
 
 
 
-**reflect-cpp** is a C++-20 library for fast serialization and deserialization using compile-time reflection, similar to [serde](https://github.com/serde-rs) in Rust, [pydantic](https://github.com/pydantic/pydantic) in Python, [encoding](https://github.com/golang/go/tree/master/src/encoding) in Go or [aeson](https://github.com/haskell/aeson/tree/master) in Haskell.
+**reflect-cpp** is a C++-20 library for **fast serialization, deserialization and validation** using compile-time reflection, similar to [pydantic](https://github.com/pydantic/pydantic) in Python, [serde](https://github.com/serde-rs) in Rust, [encoding](https://github.com/golang/go/tree/master/src/encoding) in Go or [aeson](https://github.com/haskell/aeson/tree/master) in Haskell.
 
 As the aformentioned libraries are among the most widely used in the respective languages, reflect-cpp fills an important gap in C++ development. It reduces boilerplate code and increases code safety.
 
@@ -25,12 +25,19 @@ Design principles for reflect-cpp include:
 - Simple extendability to custom classes
 - No macros
 
+## Example
+
 ```cpp
 #include <iostream>
 #include <rfl/json.hpp>
 #include <rfl.hpp>
 
-// "firstName", "lastName", "birthday" and "children" are the field names
+// Age must be a plausible number, between 0 and 130. This will
+// be validated automatically.
+using Age = rfl::Validator<int,
+                           rfl::AllOf<rfl::Minimum<0>, rfl::Maximum<130>>>;
+
+// "firstName", "lastName" and "children" are the field names
 // as they will appear in the JSON. The C++ standard is
 // snake case, the JSON standard is camel case, so the names
 // will not always be identical.
@@ -38,31 +45,41 @@ struct Person {
     rfl::Field<"firstName", std::string> first_name;
     rfl::Field<"lastName", std::string> last_name;
     rfl::Field<"birthday", rfl::Timestamp<"%Y-%m-%d">> birthday;
+    rfl::Field<"age", Age> age;
+    rfl::Field<"email", rfl::Email> email;
     rfl::Field<"children", std::vector<Person>> children;
 };
 
 const auto bart = Person{.first_name = "Bart",
                          .last_name = "Simpson",
                          .birthday = "1987-04-19",
+                         .age = 10,
+                         .email = "bart@simpson.com",
                          .children = std::vector<Person>()};
 
 const auto lisa = Person{
-    .first_name = "Lisa",
-    .last_name = "Simpson",
-    .birthday = "1987-04-19",
-    .children = rfl::default_value  // same as std::vector<Person>()
+      .first_name = "Lisa",
+      .last_name = "Simpson",
+      .birthday = "1987-04-19",
+      .age = 8,
+      .email = "lisa@simpson.com",
+      .children = rfl::default_value  // same as std::vector<Person>()
 };
 
 // Returns a deep copy of the original object,
-// replacing first_name.
+// replacing first_name, email and age.
 const auto maggie =
-    rfl::replace(lisa, rfl::make_field<"firstName">(std::string("Maggie")));
+      rfl::replace(lisa, rfl::make_field<"firstName">(std::string("Maggie")),
+                   rfl::make_field<"email">(std::string("maggie@simpson.com")),
+                   rfl::make_field<"age">(0));
 
 const auto homer =
-    Person{.first_name = "Homer",
-           .last_name = "Simpson",
-           .birthday = "1987-04-19",
-           .children = std::vector<Person>({bart, lisa, maggie})};
+      Person{.first_name = "Homer",
+             .last_name = "Simpson",
+             .birthday = "1987-04-19",
+             .age = 45,
+             .email = "homer@simpson.com",
+             .children = std::vector<Person>({bart, lisa, maggie})};
 
 // We can now transform this into a JSON string.
 const std::string json_string = rfl::json::write(homer);
@@ -73,7 +90,7 @@ std::cout << json_string << std::endl;
 This results in the following JSON string:
 
 ```json
-{"firstName":"Homer","lastName":"Simpson","birthday":"1987-04-19","children":[{"firstName":"Bart","lastName":"Simpson","birthday":"1987-04-19","children":[]},{"firstName":"Lisa","lastName":"Simpson","birthday":"1987-04-19","children":[]},{"firstName":"Maggie","lastName":"Simpson","birthday":"1987-04-19","children":[]}]}
+{"firstName":"Homer","lastName":"Simpson","birthday":"1987-04-19","age":45,"email":"homer@simpson.com","children":[{"firstName":"Bart","lastName":"Simpson","birthday":"1987-04-19","age":10,"email":"bart@simpson.com","children":[]},{"firstName":"Lisa","lastName":"Simpson","birthday":"1987-04-19","age":8,"email":"lisa@simpson.com","children":[]},{"firstName":"Maggie","lastName":"Simpson","birthday":"1987-04-19","age":0,"email":"maggie@simpson.com","children":[]}]}
 ```
 
 We can also create structs from the string:
@@ -92,22 +109,116 @@ std::cout << "Hello, my name is " << homer2.first_name() << " "
           << homer2.last_name() << "." << std::endl;
 ```
 
+## Error messages
+
 reflect-cpp returns clear and comprehensive error messages:
 
 ```cpp
 const std::string faulty_json_string =
-    R"({"firstName":"Homer","lastName":12345,"birthday":"04/19/1987"})";
+    R"({"firstName":"Homer","lastName":12345,"birthday":"04/19/1987","age":145,"email":"homer(at)simpson.com"})";
 const auto result = rfl::json::read<Person>(faulty_json_string);
 ```
 
 Yields the following error message:
 
 ```
-Found 3 errors:
+Found 5 errors:
 1) Failed to parse field 'lastName': Could not cast to string.
 2) Failed to parse field 'birthday': String '04/19/1987' did not match format '%Y-%m-%d'.
-3) Field named 'children' not found.
+3) Failed to parse field 'age': Value expected to be less than or equal to 130, but got 145.
+4) Failed to parse field 'email': String 'homer(at)simpson.com' did not match format 'Email': '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'.
+5) Field named 'children' not found.
 ```
+
+## Anonymous fields
+
+`rfl::Field` is only necessary if you want to serialize field names. If you don't (possibly because you are using a binary format), you do not need to annotate your fields:
+
+```cpp
+using Age = rfl::Validator<unsigned int,
+                           rfl::AllOf<rfl::Minimum<0>, rfl::Maximum<130>>>;
+
+struct Person {
+  std::string first_name;
+  std::string last_name;
+  rfl::Timestamp<"%Y-%m-%d"> birthday;
+  Age age;
+  rfl::Email email;
+  std::vector<Person> children;
+};
+
+const auto bart = Person{.first_name = "Bart",
+                         .last_name = "Simpson",
+                         .birthday = "1987-04-19",
+                         .age = 10,
+                         .email = "bart@simpson.com"};
+
+const auto lisa = Person{.first_name = "Lisa",
+                         .last_name = "Simpson",
+                         .birthday = "1987-04-19",
+                         .age = 8,
+                         .email = "lisa@simpson.com"};
+
+const auto maggie = Person{.first_name = "Maggie",
+                           .last_name = "Simpson",
+                           .birthday = "1987-04-19",
+                           .age = 0,
+                           .email = "maggie@simpson.com"};
+
+const auto homer =
+    Person{.first_name = "Homer",
+           .last_name = "Simpson",
+           .birthday = "1987-04-19",
+           .age = 45,
+           .email = "homer@simpson.com",
+           .children = std::vector<Person>({bart, lisa, maggie})};
+```
+
+This results in the following JSON string:
+
+```json
+["Homer","Simpson","1987-04-19",45,"homer@simpson.com",[["Bart","Simpson","1987-04-19",10,"bart@simpson.com",[]],["Lisa","Simpson","1987-04-19",8,"lisa@simpson.com",[]],["Maggie","Simpson","1987-04-19",0,"maggie@simpson.com",[]]]]
+```
+
+## Algebraic data types
+
+reflect-cpp supports Pydantic-style tagged unions, which allow you to form algebraic data types:
+
+```cpp
+  // All alternatives must contain a field named "shape". The type
+  // of the field must be an rfl::Literal.
+struct Circle {
+    rfl::Field<"shape", rfl::Literal<"Circle">> shape = rfl::default_value;
+    rfl::Field<"radius", double> radius;
+};
+
+struct Rectangle {
+    rfl::Field<"shape", rfl::Literal<"Rectangle">> shape =
+        rfl::default_value;
+    rfl::Field<"height", double> height;
+    rfl::Field<"width", double> width;
+};
+
+struct Square {
+    rfl::Field<"shape", rfl::Literal<"Square">> shape = rfl::default_value;
+    rfl::Field<"width", double> width;
+};
+
+// Now you tell rfl::TaggedUnion that you want it to look for the field "shape".
+using Shapes = rfl::TaggedUnion<"shape", Circle, Square, Rectangle>;
+
+const Shapes r = Rectangle{.height = 10, .width = 5};
+
+const auto json_string = rfl::json::write(r);
+```
+
+This results in the following JSON string:
+
+```json
+{"shape":"Rectangle","height":10.0,"width":5.0}
+```
+
+Other forms of tagging are supported as well. Refer to the [documentation](https://github.com/getml/reflect-cpp/tree/main/docs) for details.
 
 ## Support for containers
 
@@ -138,13 +249,15 @@ reflect-cpp supports the following containers from the C++ standard library:
 
 ### Additional containers
 
-In addition, it includes the following custom containers:
+In addition, it supports the following custom containers:
 
-- `rfl::Box`: Similar to `std::unique_ptr`, but guaranteed to never be null.
+- `rfl::Box`: Similar to `std::unique_ptr`, but (almost) guaranteed to never be null.
 - `rfl::Literal`: An explicitly enumerated string.
 - `rfl::NamedTuple`: Similar to `std::tuple`, but with named fields that can be retrieved via their name at compile time.
-- `rfl::Ref`: Similar to `std::shared_ptr`, but guaranteed to never be null. 
+- `rfl::Ref`: Similar to `std::shared_ptr`, but (almost) guaranteed to never be null.
+- `rfl::Result`: Allows for exception-free programming.
 - `rfl::TaggedUnion`: Similar to `std::variant`, but with explicit tags that make parsing more efficient.
+- `rfl::Validator`: Allows for automatic input validation.
 
 ### Custom classes
 
