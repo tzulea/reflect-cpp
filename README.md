@@ -9,8 +9,6 @@
 
 ![image](banner1.png)
 
-
-
 **reflect-cpp** is a C++-20 library for **fast serialization, deserialization and validation** using compile-time reflection, similar to [pydantic](https://github.com/pydantic/pydantic) in Python, [serde](https://github.com/serde-rs) in Rust, [encoding](https://github.com/golang/go/tree/master/src/encoding) in Go or [aeson](https://github.com/haskell/aeson/tree/master) in Haskell.
 
 As the aformentioned libraries are among the most widely used in the respective languages, reflect-cpp fills an important gap in C++ development. It reduces boilerplate code and increases code safety.
@@ -25,7 +23,22 @@ Design principles for reflect-cpp include:
 - Simple extendability to custom classes
 - No macros
 
-## Example
+## Why do we need this?
+
+Suppose your C++ program has complex data structures it needs to save and load. Or maybe it needs to interact with some kind of external API. If you do this the traditional way, you will have a lot of boilerplate code. This is annoying and error-prone.
+
+reflect-cpp is not just a reflection library, it is for **serialization, deserialization and validation** through reflection.
+
+That means that you can encode your assumptions about the input data in the type system and have them validated upfront. This is why the library also includes algebraic data types like tagged unions and numerous validation routines. Having your assumptions encoded in the type system is the most reliable way of ensuring they are fullfilled. It also makes it a lot easier for anyone reading your code. If your assumptions are violated, the user of your software gets a very clear error message.
+
+This increases user experience and developer experience, it makes your code safer (fewer bugs) and more secure (less prone to malicious attacks).
+
+For a more in-depth theoretical discussions of these topics, the following books are warmly recommended:
+
+- *Category Theory for Programmers* by Bartosz Milewski (https://github.com/hmemcpy/milewski-ctfp-pdf/releases) 
+- *Domain Modeling Made Functional* by Scott Wlaschin
+
+## Basic Example
 
 ```cpp
 #include <iostream>
@@ -268,10 +281,9 @@ Finally, it is very easy to extend full support to your own classes, refer to th
 reflect-cpp currently supports the following serialization formats:
 
 - **JSON**: Out-of-the-box support, no additional dependencies required.
-- **XML**: Requires [libxml2](https://github.com/GNOME/libxml2) (TODO).
-- **flexbuffers**: Requires [flatbuffers](https://github.com/google/flatbuffers) (TODO).
+- **flexbuffers**: Requires [flatbuffers](https://github.com/google/flatbuffers).
 
-reflect-cpp is deliberately designed in a very modular format, using [concepts](https://en.cppreference.com/w/cpp/language/constraints), to make it as easy as possible to support additional serialization formats. Refer to the [documentation](https://github.com/getml/reflect-cpp/tree/main/docs) for details (TODO). PRs related to serialization formats are welcome.
+reflect-cpp is deliberately designed in a very modular format, using [concepts](https://en.cppreference.com/w/cpp/language/constraints), to make it as easy as possible to support additional serialization formats. Refer to the [documentation](https://github.com/getml/reflect-cpp/tree/main/docs) for details. PRs related to serialization formats are welcome.
 
 ## Documentation
 
